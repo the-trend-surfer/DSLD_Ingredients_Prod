@@ -100,53 +100,63 @@ OUTPUT: Return only the search terms, one per line."""
             return self._create_fallback_result(ingredient)
 
     def _generate_search_terms(self, all_names: List[str], ingredient_class: str) -> List[str]:
-        """Generate search terms using all available names"""
+        """Generate search terms using OR format for all available names"""
         search_terms = []
 
-        # Base terms for each name
-        for name in all_names[:4]:  # Limit to prevent overload
-            search_terms.extend([
-                f'"{name}" supplement',
-                f'"{name}" dosage',
-                f'"{name}" effects',
-                f'site:pubmed.ncbi.nlm.nih.gov "{name}"'
-            ])
+        # Фільтруємо порожні назви
+        valid_names = [name.strip() for name in all_names if name and name.strip()]
+
+        if not valid_names:
+            return []
+
+        # Створюємо OR частину для всіх назв
+        if len(valid_names) == 1:
+            names_or_part = f'"{valid_names[0]}"'
+        else:
+            quoted_names = [f'"{name}"' for name in valid_names]
+            names_or_part = f'({" OR ".join(quoted_names)})'
+
+        # Base terms з OR форматом
+        search_terms.extend([
+            f'{names_or_part} AND supplement',
+            f'{names_or_part} AND dosage',
+            f'{names_or_part} AND effects',
+            f'{names_or_part} AND "active compounds"'
+        ])
 
         # Class-specific terms
         if ingredient_class == "vitamin":
             search_terms.extend([
-                f'"{all_names[0]}" RDA',
-                f'"{all_names[0]}" deficiency'
+                f'{names_or_part} AND RDA',
+                f'{names_or_part} AND deficiency'
             ])
         elif ingredient_class == "plant":
             search_terms.extend([
-                f'"{all_names[0]}" extract',
-                f'"{all_names[0]}" phytochemistry'
+                f'{names_or_part} AND extract',
+                f'{names_or_part} AND phytochemistry'
             ])
 
-        # Regulatory sources
+        # Regulatory sources з OR форматом
         search_terms.extend([
-            f'site:efsa.europa.eu "{all_names[0]}"',
-            f'site:fda.gov "{all_names[0]}"',
-            f'site:ods.od.nih.gov "{all_names[0]}"'
+            f'site:efsa.europa.eu {names_or_part}',
+            f'site:fda.gov {names_or_part}',
+            f'site:ods.od.nih.gov {names_or_part}'
         ])
 
         # Wikipedia sources (L1-L2 level)
         search_terms.extend([
-            f'site:en.wikipedia.org "{all_names[0]}"',
-            f'site:uk.wikipedia.org "{all_names[0]}"',
-            f'site:ru.wikipedia.org "{all_names[0]}"'
+            f'site:en.wikipedia.org {names_or_part}',
+            f'site:uk.wikipedia.org {names_or_part}',
+            f'site:ru.wikipedia.org {names_or_part}'
         ])
 
         # Додаємо додаткові терми якщо менше 8
         while len(search_terms) < 8:
             search_terms.extend([
-                f'"{all_names[0]}" safety',
-                f'"{all_names[0]}" research',
-                f'"{all_names[0]}" clinical',
-                f'"{all_names[0]}" benefits',
-                f'"{all_names[0]}" therapeutic',
-                f'"{all_names[0]}" study'
+                f'{names_or_part} AND safety',
+                f'{names_or_part} AND research',
+                f'{names_or_part} AND clinical',
+                f'{names_or_part} AND benefits'
             ])
 
         # Limit to schema requirements (8-14)
@@ -157,19 +167,29 @@ OUTPUT: Return only the search terms, one per line."""
         candidates = []
 
         try:
-            # Створюємо специфічні запити для PubMed
-            pubmed_queries = []
+            # Фільтруємо порожні назви
+            valid_names = [name.strip() for name in all_names if name and name.strip()]
 
-            # Основні запити по назвах
-            for name in all_names[:3]:
-                if len(name) > 2:  # Уникаємо дуже коротких назв
-                    pubmed_queries.extend([
-                        f'"{name}"[Title/Abstract] AND (supplement OR nutrition OR dietary)',
-                        f'"{name}"[Title] AND dosage',
-                        f'"{name}" AND (active compound OR bioactive)'
-                    ])
+            if not valid_names:
+                return candidates
 
-            # Відфільтровуємо дублікати
+            # Створюємо OR частину для PubMed запитів
+            if len(valid_names) == 1:
+                names_or_part = f'"{valid_names[0]}"'
+            else:
+                quoted_names = [f'"{name}"' for name in valid_names]
+                names_or_part = f'({" OR ".join(quoted_names)})'
+
+            # Створюємо специфічні запити для PubMed з OR форматом
+            pubmed_queries = [
+                f'{names_or_part}[Title/Abstract] AND (supplement OR nutrition OR dietary)',
+                f'{names_or_part}[Title] AND dosage',
+                f'{names_or_part} AND (active compound OR bioactive)',
+                f'{names_or_part} AND (clinical OR study OR effect)',
+                f'{names_or_part} AND (biological source OR derived from OR extracted from)'
+            ]
+
+            # Відфільтровуємо дублікати та обмежуємо
             pubmed_queries = list(set(pubmed_queries[:8]))  # Максимум 8 запитів
 
             print(f"[SEARCH] Running {len(pubmed_queries)} NCBI queries...")

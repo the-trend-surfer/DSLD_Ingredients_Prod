@@ -38,11 +38,11 @@ CRITICAL FORMAT FOR "taxon.uk": "Українська назва (English origin
 }
 
 EXAMPLES:
-AHCC -> {"ingredient": "AHCC", "class": "other", "taxon": {"uk": "АХЦЦ (AHCC)", "lat": "Lentinula edodes extract", "rank": "other"}, "source_material": {"kingdom": "Гриби", "part_or_origin": "extract"}}
+AHCC -> {"ingredient": "AHCC", "class": "other", "taxon": {"uk": "АХЦЦ (AHCC)", "lat": "", "rank": "other"}, "source_material": {"kingdom": "Інше", "part_or_origin": "extract"}}
 
-Vitamin C -> {"ingredient": "Vitamin C", "class": "vitamin", "taxon": {"uk": "Вітамін С (Vitamin C)", "lat": "Ascorbic acid", "rank": "other"}, "source_material": {"kingdom": "Інше", "part_or_origin": "synthetic"}}
+Vitamin C -> {"ingredient": "Vitamin C", "class": "vitamin", "taxon": {"uk": "Вітамін С (Vitamin C)", "lat": "", "rank": "other"}, "source_material": {"kingdom": "Інше", "part_or_origin": "synthetic"}}
 
-Ginkgo Biloba -> {"ingredient": "Ginkgo Biloba", "class": "plant", "taxon": {"uk": "Гінкго білоба (Ginkgo Biloba)", "lat": "Ginkgo biloba", "rank": "species"}, "source_material": {"kingdom": "Рослини", "part_or_origin": "leaf"}}
+Ginkgo Biloba -> {"ingredient": "Ginkgo Biloba", "class": "plant", "taxon": {"uk": "Гінкго білоба (Ginkgo Biloba)", "lat": "", "rank": "species"}, "source_material": {"kingdom": "Рослини", "part_or_origin": "leaf"}}
 
 RULES:
 - CRITICAL: "taxon.uk" MUST be "Українська (English)" format

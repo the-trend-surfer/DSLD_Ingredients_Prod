@@ -1,0 +1,26 @@
+{
+  "project_id": "DLSD_20250921_220751",
+  "start_time": "2025-09-21T22:07:53.663729",
+  "total_ingredients": 6457,
+  "current_index": 3,
+  "start_row": 3,
+  "end_row": 3,
+  "processed_count": 1,
+  "success_count": 1,
+  "error_count": 0,
+  "skipped_count": 0,
+  "ai_model": "openai",
+  "failed_ingredients": [],
+  "successful_ingredients": [
+    {
+      "ingredient": "Abalone",
+      "row": 3,
+      "compounds": 0,
+      "has_dose": true,
+      "citations": 1
+    }
+  ],
+  "last_update": "2025-09-21T22:09:11.060077",
+  "estimated_time_remaining": null,
+  "average_time_per_ingredient": null
+}

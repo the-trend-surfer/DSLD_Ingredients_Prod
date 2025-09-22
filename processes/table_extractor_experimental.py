@@ -32,6 +32,486 @@ class ExperimentalTableExtractor:
 
 Повертай тільки JSON згідно схеми."""
 
+    def extract_for_table_with_separate_bcd_cycles(self, normalized_data: Dict[str, Any], accepted_sources: List[Dict[str, Any]], synonyms: Optional[List[str]] = None, existing_links: Optional[List[str]] = None, ai_model: Optional[str] = None) -> Dict[str, Any]:
+        """
+        НОВИЙ ПІДХІД - Окремі цикли для стовпчиків B, C, D згідно з CLAUDE.md:
+
+        Стовпчик B: Gemini пошук → L1-L4 фільтрація → AI аналіз джерел → Витяг джерела сировини
+        Стовпчик C: Gemini пошук → L1-L4 фільтрація → AI аналіз джерел → Витяг активних сполук
+        Стовпчик D: Gemini пошук → L1-L4 фільтрація → AI аналіз джерел → Витяг дозування
+        """
+        try:
+            # Витягуємо назву інгредієнта
+            if isinstance(normalized_data, dict):
+                ingredient = normalized_data.get("ingredient") or normalized_data.get("name") or str(normalized_data)
+            else:
+                ingredient = str(normalized_data)
+
+            print(f"[SEPARATE-BCD] Processing {ingredient} with separate column cycles...")
+
+            # Ініціалізуємо порожній результат
+            result = {
+                "nazva_ukr_orig": "",
+                "dzherelo_syrovyny": "",
+                "aktyvni_spoluky": [],
+                "dobova_norma": "",
+                "dzherela_tsytaty": []
+            }
+
+            # 🔍 ЦИКЛ B: ДЖЕРЕЛО СИРОВИНИ
+            print(f"[CYCLE-B] Searching for source material...")
+            result["dzherelo_syrovyny"] = self._search_column_b_cycle(ingredient, synonyms, ai_model)
+
+            # 🧪 ЦИКЛ C: АКТИВНІ СПОЛУКИ
+            print(f"[CYCLE-C] Searching for active compounds...")
+            result["aktyvni_spoluky"] = self._search_column_c_cycle(ingredient, synonyms, ai_model)
+
+            # 💊 ЦИКЛ D: ДОЗУВАННЯ
+            print(f"[CYCLE-D] Searching for dosage...")
+            result["dobova_norma"] = self._search_column_d_cycle(ingredient, synonyms, ai_model)
+
+            # 🏷️ НАЗВА: AI переклад (без пошуку!)
+            result["nazva_ukr_orig"] = self._translate_name_to_ukrainian(ingredient, ai_model)
+
+            # 📝 ЦИТАТИ: Збираємо з усіх циклів
+            result["dzherela_tsytaty"] = self._collect_citations_from_cycles(ingredient)
+
+            print(f"[SEPARATE-BCD] Completed {ingredient}")
+            return result
+
+        except Exception as e:
+            print(f"[ERROR] Separate B/C/D cycles failed for {ingredient}: {e}")
+            return self._create_empty_table_result(ingredient)
+
+    def _search_column_b_cycle(self, ingredient: str, synonyms: Optional[List[str]], ai_model: Optional[str]) -> str:
+        """
+        Цикл B: Gemini пошук джерела сировини → L1-L4 фільтрація → AI аналіз
+        Query: ("IngrediENT" OR "synonym1") biological source extraction "derived from"
+        """
+        try:
+            # 1. Gemini Google Search для джерела сировини
+            print(f"[B1] Gemini search for biological source...")
+            try:
+                search_results = gemini_google_searcher.search_for_column_b_source(ingredient, synonyms)
+            except Exception as e:
+                print(f"[B1-FALLBACK] Gemini failed, using NCBI: {e}")
+                search_results = self._fallback_to_ncbi_for_source(ingredient, synonyms)
+
+            if not search_results:
+                print(f"[B1] No Gemini results, trying NCBI fallback...")
+                search_results = self._fallback_to_ncbi_for_source(ingredient, synonyms)
+
+            if not search_results:
+                print(f"[B1] No results from Gemini or NCBI fallback")
+                return ""
+
+            # 2. L1-L4 фільтрація результатів
+            print(f"[B2] Filtering {len(search_results)} results by L1-L4 priority...")
+            filtered_results = self._filter_sources_by_priority(search_results)
+
+            if not filtered_results:
+                print(f"[B2] No L1-L4 sources found for source material")
+                return ""
+
+            # 3. AI аналіз найкращих джерел
+            print(f"[B3] AI analysis of top L1-L4 sources...")
+            for result in filtered_results[:3]:  # Топ 3 результати
+                try:
+                    prompt = TablePrompts.get_column_b_prompt(ingredient, result.get('text', ''), result.get('url', ''))
+                    response = self._call_ai_direct(prompt, ai_model)
+
+                    if response and '{' in response:
+                        data = self._extract_json_from_response(response)
+                        if data and data.get('dzherelo_syrovyny'):
+                            print(f"[B3-OK] Found source: {data['dzherelo_syrovyny']}")
+                            return data['dzherelo_syrovyny']
+                except Exception as e:
+                    print(f"[B3-ERROR] AI analysis failed for source: {e}")
+                    continue
+
+            return ""
+
+        except Exception as e:
+            print(f"[ERROR] Column B cycle failed: {e}")
+            return ""
+
+    def _search_column_c_cycle(self, ingredient: str, synonyms: Optional[List[str]], ai_model: Optional[str]) -> List[str]:
+        """
+        Цикл C: Gemini пошук активних сполук → L1-L4 фільтрація → AI аналіз
+        Query: ("IngrediENT" OR "synonym1") active compounds chemical composition
+        """
+        try:
+            # 1. Gemini Google Search для активних сполук
+            print(f"[C1] Gemini search for active compounds...")
+            try:
+                search_results = gemini_google_searcher.search_for_column_c_compounds(ingredient, synonyms)
+            except Exception as e:
+                print(f"[C1-FALLBACK] Gemini failed, using NCBI: {e}")
+                search_results = self._fallback_to_ncbi_for_compounds(ingredient, synonyms)
+
+            if not search_results:
+                print(f"[C1] No Gemini results, trying NCBI fallback...")
+                search_results = self._fallback_to_ncbi_for_compounds(ingredient, synonyms)
+
+            if not search_results:
+                print(f"[C1] No results from Gemini or NCBI fallback")
+                return []
+
+            # 2. L1-L4 фільтрація результатів
+            print(f"[C2] Filtering {len(search_results)} results by L1-L4 priority...")
+            filtered_results = self._filter_sources_by_priority(search_results)
+
+            if not filtered_results:
+                print(f"[C2] No L1-L4 sources found for compounds")
+                return []
+
+            # 3. AI аналіз найкращих джерел
+            print(f"[C3] AI analysis of top L1-L4 sources...")
+            for result in filtered_results[:3]:  # Топ 3 результати
+                try:
+                    prompt = TablePrompts.get_column_c_prompt(ingredient, result.get('text', ''), result.get('url', ''))
+                    response = self._call_ai_direct(prompt, ai_model)
+
+                    if response and '{' in response:
+                        data = self._extract_json_from_response(response)
+                        if data and data.get('aktyvni_spoluky'):
+                            compounds = data['aktyvni_spoluky']
+                            print(f"[C3-OK] Found {len(compounds)} compounds")
+                            return compounds
+                except Exception as e:
+                    print(f"[C3-ERROR] AI analysis failed for compounds: {e}")
+                    continue
+
+            return []
+
+        except Exception as e:
+            print(f"[ERROR] Column C cycle failed: {e}")
+            return []
+
+    def _search_column_d_cycle(self, ingredient: str, synonyms: Optional[List[str]], ai_model: Optional[str]) -> str:
+        """
+        Цикл D: Gemini пошук дозування → L1-L4 фільтрація → AI аналіз
+        Query: ("IngrediENT" OR "synonym1") dosage clinical recommendations "mg per day"
+        """
+        try:
+            # 1. Gemini Google Search для дозування
+            print(f"[D1] Gemini search for dosage...")
+            try:
+                search_results = gemini_google_searcher.search_for_column_d_dosage(ingredient, synonyms)
+            except Exception as e:
+                print(f"[D1-FALLBACK] Gemini failed, using NCBI: {e}")
+                search_results = self._fallback_to_ncbi_for_dosage(ingredient, synonyms)
+
+            if not search_results:
+                print(f"[D1] No Gemini results, trying NCBI fallback...")
+                search_results = self._fallback_to_ncbi_for_dosage(ingredient, synonyms)
+
+            if not search_results:
+                print(f"[D1] No results from Gemini or NCBI fallback")
+                return ""
+
+            # 2. L1-L4 фільтрація результатів
+            print(f"[D2] Filtering {len(search_results)} results by L1-L4 priority...")
+            filtered_results = self._filter_sources_by_priority(search_results)
+
+            if not filtered_results:
+                print(f"[D2] No L1-L4 sources found for dosage")
+                return ""
+
+            # 3. AI аналіз найкращих джерел
+            print(f"[D3] AI analysis of top L1-L4 sources...")
+            for result in filtered_results[:3]:  # Топ 3 результати
+                try:
+                    prompt = TablePrompts.get_column_d_prompt(ingredient, result.get('text', ''), result.get('url', ''))
+                    response = self._call_ai_direct(prompt, ai_model)
+
+                    if response and '{' in response:
+                        data = self._extract_json_from_response(response)
+                        if data and data.get('dobova_norma'):
+                            dosage = data['dobova_norma']
+                            print(f"[D3-OK] Found dosage: {dosage}")
+                            return dosage
+                except Exception as e:
+                    print(f"[D3-ERROR] AI analysis failed for dosage: {e}")
+                    continue
+
+            return ""
+
+        except Exception as e:
+            print(f"[ERROR] Column D cycle failed: {e}")
+            return ""
+
+    def _filter_sources_by_priority(self, search_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Фільтрує результати за L1-L4 пріоритетом згідно з source_policy"""
+        filtered = []
+
+        for result in search_results:
+            url = result.get('url', '')
+            if url:
+                priority = source_policy.get_source_priority(url)
+                if priority <= 4:  # L1-L4 (1=найкращий, 4=найгірший)
+                    result['priority_level'] = f"L{priority}"
+                    filtered.append(result)
+
+        # Сортуємо за пріоритетом: L1 → L2 → L3 → L4
+        filtered.sort(key=lambda x: x.get('priority_level', 'L4'))
+
+        return filtered
+
+    def _translate_name_to_ukrainian(self, ingredient: str, ai_model: Optional[str]) -> str:
+        """AI переклад назви без пошуку (згідно з CLAUDE.md)"""
+        try:
+            prompt = f"""Перекладай ТІЛЬКИ назву "{ingredient}" українською у форматі "Українська (English)".
+
+Приклади:
+- "AHCC" → "АХЦЦ (AHCC)"
+- "Vitamin C" → "Вітамін С (Vitamin C)"
+- "CoQ10" → "Коензим Q10 (CoQ10)"
+- "ATP" → "АТФ (ATP)"
+
+Поверни тільки переклад без пояснень:"""
+
+            response = self._call_ai_direct(prompt, ai_model)
+            if response and response.strip():
+                return response.strip()
+
+            # Fallback для популярних інгредієнтів
+            translations = {
+                "AHCC": "АХЦЦ (AHCC)",
+                "ATP": "АТФ (ATP)",
+                "CoQ10": "Коензим Q10 (CoQ10)",
+                "DNA": "ДНК (DNA)",
+                "RNA": "РНК (RNA)"
+            }
+            return translations.get(ingredient, f"{ingredient} ({ingredient})")
+
+        except Exception as e:
+            print(f"[ERROR] Name translation failed: {e}")
+            return f"{ingredient} ({ingredient})"
+
+    def _collect_citations_from_cycles(self, ingredient: str) -> List[Dict[str, Any]]:
+        """Збирає цитати з усіх циклів B/C/D"""
+        try:
+            citations = []
+
+            # Збираємо джерела з Gemini пошуку для всіх циклів
+            print(f"[CITATIONS] Collecting sources for {ingredient}...")
+
+            # Пошук B: джерела сировини
+            b_sources = gemini_google_searcher.search_for_column_b_source(ingredient)
+            for source in b_sources[:2]:  # Максимум 2 з кожного циклу
+                if source.get('url') and source.get('content'):
+                    quote = self._extract_relevant_quote(source['content'], ingredient, 'source')
+                    if quote:
+                        citations.append({
+                            "url": source['url'],
+                            "quote": quote,
+                            "type": "B-cycle source",
+                            "priority": source_policy.get_source_priority(source['url'])
+                        })
+
+            # Пошук C: активні сполуки
+            c_sources = gemini_google_searcher.search_for_column_c_compounds(ingredient)
+            for source in c_sources[:2]:
+                if source.get('url') and source.get('content'):
+                    quote = self._extract_relevant_quote(source['content'], ingredient, 'compounds')
+                    if quote:
+                        citations.append({
+                            "url": source['url'],
+                            "quote": quote,
+                            "type": "C-cycle compounds",
+                            "priority": source_policy.get_source_priority(source['url'])
+                        })
+
+            # Пошук D: дозування
+            d_sources = gemini_google_searcher.search_for_column_d_dosage(ingredient)
+            for source in d_sources[:2]:
+                if source.get('url') and source.get('content'):
+                    quote = self._extract_relevant_quote(source['content'], ingredient, 'dosage')
+                    if quote:
+                        citations.append({
+                            "url": source['url'],
+                            "quote": quote,
+                            "type": "D-cycle dosage",
+                            "priority": source_policy.get_source_priority(source['url'])
+                        })
+
+            # FALLBACK: Якщо Gemini не дав результатів, використовуємо NCBI статті
+            if len(citations) == 0:
+                print(f"[CITATIONS] No Gemini results, using NCBI fallback...")
+                ncbi_citations = self._get_citations_from_ncbi(ingredient)
+                citations.extend(ncbi_citations)
+
+            # Сортуємо за пріоритетом (1=найкращий, 5=найгірший)
+            citations.sort(key=lambda x: x.get('priority', 5))
+
+            # Повертаємо максимум 3 найкращі цитати
+            final_citations = citations[:3]
+            print(f"[CITATIONS OK] Collected {len(final_citations)} citations from cycles")
+
+            return final_citations
+
+        except Exception as e:
+            print(f"[CITATIONS ERROR] Failed to collect citations: {e}")
+            return []
+
+    def _extract_relevant_quote(self, content: str, ingredient: str, quote_type: str) -> str:
+        """Витягує релевантну цитату з контенту джерела"""
+        try:
+            if not content or len(content) < 20:
+                return ""
+
+            content_lower = content.lower()
+            ingredient_lower = ingredient.lower()
+
+            # Розбиваємо контент на речення
+            sentences = content.replace('. ', '.\n').replace('? ', '?\n').replace('! ', '!\n').split('\n')
+
+            # Ключові слова для різних типів пошуку
+            keywords_by_type = {
+                'source': ['derived from', 'extracted from', 'obtained from', 'source', 'found in', 'present in'],
+                'compounds': ['contains', 'compound', 'active', 'chemical', 'constituent', 'component'],
+                'dosage': ['mg', 'gram', 'dose', 'daily', 'recommended', 'dosage', 'amount', 'intake']
+            }
+
+            keywords = keywords_by_type.get(quote_type, [])
+
+            # Шукаємо найкраще речення
+            best_sentence = ""
+            best_score = 0
+
+            for sentence in sentences:
+                sentence = sentence.strip()
+                if len(sentence) < 10 or len(sentence) > 200:
+                    continue
+
+                sentence_lower = sentence.lower()
+                score = 0
+
+                # Перевіряємо наявність назви інгредієнта
+                if ingredient_lower in sentence_lower:
+                    score += 3
+
+                # Перевіряємо ключові слова для типу пошуку
+                for keyword in keywords:
+                    if keyword in sentence_lower:
+                        score += 2
+
+                # Віддаємо перевагу реченням з числами для дозування
+                if quote_type == 'dosage' and any(char.isdigit() for char in sentence):
+                    score += 2
+
+                if score > best_score:
+                    best_score = score
+                    best_sentence = sentence
+
+            # Якщо знайшли хороше речення
+            if best_score >= 3 and best_sentence:
+                # Обрізаємо до розумної довжини
+                if len(best_sentence) > 150:
+                    best_sentence = best_sentence[:147] + "..."
+                return best_sentence
+
+            return ""
+
+        except Exception as e:
+            print(f"[QUOTE ERROR] Failed to extract quote: {e}")
+            return ""
+
+    def _get_citations_from_ncbi(self, ingredient: str) -> List[Dict[str, Any]]:
+        """Отримує цитати з NCBI статей як fallback"""
+        try:
+            citations = []
+
+            # Пошук статей в NCBI
+            query = f'"{ingredient}" AND (clinical OR study OR effect)'
+            articles = ncbi_client.search_pubmed(query, max_results=3)
+
+            for article in articles:
+                if article.get('title') and article.get('pmid'):
+                    # Створюємо URL для PubMed
+                    url = f"https://pubmed.ncbi.nlm.nih.gov/{article['pmid']}/"
+
+                    # Використовуємо title як цитату (це абстракт статті)
+                    quote = article['title']
+                    if len(quote) > 150:
+                        quote = quote[:147] + "..."
+
+                    citations.append({
+                        "url": url,
+                        "quote": quote,
+                        "type": "NCBI fallback",
+                        "priority": 1  # L1 для PubMed
+                    })
+
+            print(f"[CITATIONS] Found {len(citations)} NCBI citations")
+            return citations
+
+        except Exception as e:
+            print(f"[CITATIONS ERROR] NCBI fallback failed: {e}")
+            return []
+
+    def _fallback_to_ncbi_for_source(self, ingredient: str, synonyms: Optional[List[str]]) -> List[Dict[str, Any]]:
+        """Fallback до NCBI для джерел сировини"""
+        try:
+            search_terms = [ingredient]
+            if synonyms:
+                search_terms.extend(synonyms[:2])
+
+            for term in search_terms:
+                query = f'"{term}" AND (biological source OR derived from OR extracted from)'
+                articles = ncbi_client.search_pubmed(query, max_results=5)
+                if articles:
+                    return [self._convert_ncbi_to_search_result(article, 'source') for article in articles]
+
+            return []
+        except:
+            return []
+
+    def _fallback_to_ncbi_for_compounds(self, ingredient: str, synonyms: Optional[List[str]]) -> List[Dict[str, Any]]:
+        """Fallback до NCBI для активних сполук"""
+        try:
+            search_terms = [ingredient]
+            if synonyms:
+                search_terms.extend(synonyms[:2])
+
+            for term in search_terms:
+                query = f'"{term}" AND (active compounds OR chemical composition OR bioactive)'
+                articles = ncbi_client.search_pubmed(query, max_results=5)
+                if articles:
+                    return [self._convert_ncbi_to_search_result(article, 'compounds') for article in articles]
+
+            return []
+        except:
+            return []
+
+    def _fallback_to_ncbi_for_dosage(self, ingredient: str, synonyms: Optional[List[str]]) -> List[Dict[str, Any]]:
+        """Fallback до NCBI для дозування"""
+        try:
+            search_terms = [ingredient]
+            if synonyms:
+                search_terms.extend(synonyms[:2])
+
+            for term in search_terms:
+                query = f'"{term}" AND (dosage OR dose OR daily OR recommended)'
+                articles = ncbi_client.search_pubmed(query, max_results=5)
+                if articles:
+                    return [self._convert_ncbi_to_search_result(article, 'dosage') for article in articles]
+
+            return []
+        except:
+            return []
+
+    def _convert_ncbi_to_search_result(self, article: Dict[str, Any], search_type: str) -> Dict[str, Any]:
+        """Конвертує NCBI статтю в формат для пошукових результатів"""
+        return {
+            'url': article.get('url', ''),
+            'title': article.get('title', ''),
+            'text': article.get('abstract', ''),
+            'search_type': f'ncbi_{search_type}',
+            'priority_level': 'L1'  # NCBI завжди L1
+        }
+
     def extract_for_table_experimental(self, normalized_data: Dict[str, Any], accepted_sources: List[Dict[str, Any]], synonyms: Optional[List[str]] = None, existing_links: Optional[List[str]] = None, ai_model: Optional[str] = None) -> Dict[str, Any]:
         """
         ЕКСПЕРИМЕНТАЛЬНА ВЕРСІЯ з ПРАВИЛЬНОЮ ПРІОРИТИЗАЦІЄЮ:

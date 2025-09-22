@@ -1,0 +1,31 @@
+{
+  "nazva_ukr_orig": "AHCC (Active Hexose Correlated Compound)",
+  "dzherelo_syrovyny": "Гриби Шиітаке (Lentinula edodes); міцелій, вирощений у екстракті рисових висівок",
+  "aktyvni_spoluky": [
+    "Ацетильовані альфа-глюкани (Acetylated alpha-glucans)",
+    "частково ацильовані α-глюкани (Partially acylated α-glucans)",
+    "бета-глюкани (β-glucans)",
+    "полісахариди (Polysaccharides)",
+    "амінокислоти (Amino acids)",
+    "ліпіди (Lipids)",
+    "мінерали (Minerals)"
+  ],
+  "dobova_norma": "1-3 г",
+  "dzherela_tsytaty": [
+    {
+      "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGe2Vn8NAIsM9T5HXHOCCTFejzN-BWZGPDD2Vih5U_WxIaDtn8uFCYuFuuqhbsZbOEsro3XgebgHka8w3Rq8Ndfg2m5wPpGX36ynekYhVU8A6fY5P-cOiH39pNKiCnCDLjDNxpg",
+      "quote": "ahcc.net",
+      "type": "Google Search"
+    },
+    {
+      "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQESHHwMgpKJlFbCnaNhK8dhsSXTexHQJvNZKSGsFTV4IddiqeC-4-53aFuvF_Lp67brWJGNn8V9p1knuD9FzTSpM_Gq2Aas_MNYBGbwefGjuz0rGwD3X0wEz968AC7cT4inGp1VnWDDxjQ=",
+      "quote": "sourcenaturals.com",
+      "type": "Google Search"
+    },
+    {
+      "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGxFrWoHcY4KPNhOYSngHI0Vs7nLE_TBvCYup_pWV7O3IxFFhWed2z5kAoVFUKTeTlivK5teClvR8chdoom07VOSuD05PZJ16gb2XihpyH8MQ7K0zFq4oqPGmSP7w==",
+      "quote": "wikipedia.org",
+      "type": "Google Search"
+    }
+  ]
+}

@@ -110,7 +110,7 @@ class EvidencePipeline:
 
             # STAGE 4: TABLE EXTRACTOR - витягування даних у табличний формат
             print(f"[STAGE 4] Extracting table data from {len(accepted_sources)} sources...")
-            table_result = self.table_extractor.extract_for_table_experimental(
+            table_result = self.table_extractor.extract_for_table_with_separate_bcd_cycles(
                 normalized_data,
                 accepted_sources,
                 synonyms=synonyms,
@@ -210,8 +210,8 @@ class EvidencePipeline:
             'C_aktyvni_spoluky': self._format_compounds(table_result.get('aktyvni_spoluky', [])),  # Активні сполуки
             'D_dozuvannya': table_result.get('dobova_norma', ''),  # Дозування
             'E_riven_dokaziv': self._determine_evidence_level(table_result),  # Рівень доказів
-            'F_tsytaty': self._format_citations(table_result.get('dzherela_tsytaty', [])),  # Цитати з dzherela_tsytaty
-            'G_dzherela': self._extract_urls_from_citations(table_result.get('dzherela_tsytaty', []))  # Джерела з цитат
+            'F_tsytaty': self._format_citations(table_result.get('dzherela_tsytaty', [])),  # Цитати з URL
+            'G_dzherela': ''  # Порожній, оскільки URL тепер в стовпчику F
         }
 
         return result
@@ -229,7 +229,7 @@ class EvidencePipeline:
         return ', '.join(compounds[:5])  # Максимум 5 сполук
 
     def _format_citations(self, citations: List[Dict[str, Any]]) -> str:
-        """Форматує цитати у строку для стовпчика F"""
+        """Форматує цитати з URL у строку для стовпчика F"""
         if not citations:
             return ''
 
@@ -241,8 +241,14 @@ class EvidencePipeline:
         for citation in citations[:3]:  # Максимум 3 цитати
             if isinstance(citation, dict):
                 quote = citation.get('quote', '')
+                url = citation.get('url', '')
+
                 if quote and len(quote) > 10:  # Мінімальна довжина цитати
-                    formatted.append(quote[:100])  # Обрізаємо довгі цитати
+                    # Формат: "цитата (URL)"
+                    citation_text = quote[:100]  # Обрізаємо довгі цитати
+                    if url:
+                        citation_text += f" ({url})"
+                    formatted.append(citation_text)
             elif isinstance(citation, str):
                 formatted.append(citation[:100])
 

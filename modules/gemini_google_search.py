@@ -42,6 +42,192 @@ class GeminiGoogleSearcher:
             print(f"[ERROR] Gemini Google Search setup failed: {e}")
             self.model = None
 
+    def search_for_column_b_source(self, ingredient: str, synonyms: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """
+        Пошук для стовпчика B - Джерело отримання
+        Query pattern: ("IngrediENT" OR "synonym1") biological source extraction "derived from"
+        """
+        if not self.model:
+            return []
+
+        try:
+            # Формуємо імена для пошуку
+            search_terms = [f'"{ingredient}"']
+            if synonyms:
+                search_terms.extend([f'"{syn}"' for syn in synonyms[:2]])
+
+            # Спеціалізований запит для джерела сировини
+            query = f"""
+            Find biological source and origin for {' OR '.join(search_terms)}
+            biological source extraction "derived from" "obtained from"
+            site:pubmed.ncbi.nlm.nih.gov OR site:efsa.europa.eu OR site:examine.com OR site:nature.com
+            """
+
+            response = self.model.generate_content(
+                f"Search for the biological source and origin of {ingredient}. "
+                f"Focus on: plant/animal/fungal source, which part (leaves, root, fruit, etc.), scientific name. "
+                f"Query: {query}"
+            )
+
+            return self._parse_search_response_for_column_b(response.text)
+
+        except Exception as e:
+            print(f"[ERROR] Column B search failed for {ingredient}: {e}")
+            return []
+
+    def search_for_column_c_compounds(self, ingredient: str, synonyms: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """
+        Пошук для стовпчика C - Активні сполуки
+        Query pattern: ("IngrediENT" OR "synonym1") active compounds chemical composition
+        """
+        if not self.model:
+            return []
+
+        try:
+            # Формуємо імена для пошуку
+            search_terms = [f'"{ingredient}"']
+            if synonyms:
+                search_terms.extend([f'"{syn}"' for syn in synonyms[:2]])
+
+            # Спеціалізований запит для активних сполук
+            query = f"""
+            {' OR '.join(search_terms)} active compounds chemical composition bioactive
+            "active ingredients" "chemical constituents" "phytochemicals"
+            site:pubmed.ncbi.nlm.nih.gov OR site:efsa.europa.eu OR site:examine.com OR site:nature.com
+            """
+
+            response = self.model.generate_content(
+                f"Search for active compounds and chemical composition of {ingredient}. "
+                f"Focus on: chemical names, bioactive compounds, concentrations, CAS numbers if available. "
+                f"Query: {query}"
+            )
+
+            return self._parse_search_response_for_column_c(response.text)
+
+        except Exception as e:
+            print(f"[ERROR] Column C search failed for {ingredient}: {e}")
+            return []
+
+    def search_for_column_d_dosage(self, ingredient: str, synonyms: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """
+        Пошук для стовпчика D - Дозування
+        Query pattern: ("IngrediENT" OR "synonym1") dosage clinical recommendations "mg per day"
+        """
+        if not self.model:
+            return []
+
+        try:
+            # Формуємо імена для пошуку
+            search_terms = [f'"{ingredient}"']
+            if synonyms:
+                search_terms.extend([f'"{syn}"' for syn in synonyms[:2]])
+
+            # Спеціалізований запит для дозування
+            query = f"""
+            {' OR '.join(search_terms)} dosage clinical recommendations "mg per day"
+            "recommended dose" "daily dose" "therapeutic dose" dose
+            site:pubmed.ncbi.nlm.nih.gov OR site:efsa.europa.eu OR site:examine.com OR site:ods.od.nih.gov
+            """
+
+            response = self.model.generate_content(
+                f"Search for dosage and clinical recommendations for {ingredient}. "
+                f"Focus on: recommended daily doses, therapeutic amounts, mg/g/IU per day, clinical studies. "
+                f"Query: {query}"
+            )
+
+            return self._parse_search_response_for_column_d(response.text)
+
+        except Exception as e:
+            print(f"[ERROR] Column D search failed for {ingredient}: {e}")
+            return []
+
+    def _parse_search_response_for_column_b(self, response_text: str) -> List[Dict[str, Any]]:
+        """Parse Gemini response for column B - Source material"""
+        results = []
+
+        # Extract URLs and snippets from response
+        lines = response_text.split('\n')
+        current_result = {}
+
+        for line in lines:
+            # Look for URLs
+            url_match = re.search(r'https?://[^\s]+', line)
+            if url_match:
+                if current_result:
+                    results.append(current_result)
+                current_result = {
+                    'url': url_match.group(),
+                    'title': '',
+                    'text': '',
+                    'search_type': 'column_b_source'
+                }
+            elif current_result and line.strip():
+                # Add text content
+                if not current_result['title']:
+                    current_result['title'] = line.strip()[:100]
+                current_result['text'] += line.strip() + ' '
+
+        if current_result:
+            results.append(current_result)
+
+        return results[:5]  # Limit to 5 results
+
+    def _parse_search_response_for_column_c(self, response_text: str) -> List[Dict[str, Any]]:
+        """Parse Gemini response for column C - Active compounds"""
+        results = []
+
+        lines = response_text.split('\n')
+        current_result = {}
+
+        for line in lines:
+            url_match = re.search(r'https?://[^\s]+', line)
+            if url_match:
+                if current_result:
+                    results.append(current_result)
+                current_result = {
+                    'url': url_match.group(),
+                    'title': '',
+                    'text': '',
+                    'search_type': 'column_c_compounds'
+                }
+            elif current_result and line.strip():
+                if not current_result['title']:
+                    current_result['title'] = line.strip()[:100]
+                current_result['text'] += line.strip() + ' '
+
+        if current_result:
+            results.append(current_result)
+
+        return results[:5]
+
+    def _parse_search_response_for_column_d(self, response_text: str) -> List[Dict[str, Any]]:
+        """Parse Gemini response for column D - Dosage"""
+        results = []
+
+        lines = response_text.split('\n')
+        current_result = {}
+
+        for line in lines:
+            url_match = re.search(r'https?://[^\s]+', line)
+            if url_match:
+                if current_result:
+                    results.append(current_result)
+                current_result = {
+                    'url': url_match.group(),
+                    'title': '',
+                    'text': '',
+                    'search_type': 'column_d_dosage'
+                }
+            elif current_result and line.strip():
+                if not current_result['title']:
+                    current_result['title'] = line.strip()[:100]
+                current_result['text'] += line.strip() + ' '
+
+        if current_result:
+            results.append(current_result)
+
+        return results[:5]
+
     def search_column_specific_data(self, ingredient: str, synonyms: Optional[List[str]] = None, column_type: str = "comprehensive") -> Dict[str, Any]:
         """
         Цільовий пошук даних про інгредієнт для конкретного стовпчика

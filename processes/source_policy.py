@@ -54,6 +54,60 @@ class SourcePolicy:
             'blogspot.com'
         ]
 
+    def get_source_priority(self, url: str) -> int:
+        """
+        Повертає пріоритет джерела (1-4) для URL
+
+        Returns:
+            1: L1 (найвища якість)
+            2: L2 (високоякісні наукові)
+            3: L3 (спеціалізовані ресурси)
+            4: L4 (університети та інші)
+            5: DENY (заборонено)
+        """
+        try:
+            if not url:
+                return 5
+
+            # Parse domain
+            parsed = urlparse(url.lower())
+            domain = parsed.netloc.lower()
+
+            # Remove www. prefix
+            if domain.startswith('www.'):
+                domain = domain[4:]
+
+            # Check L1 domains (highest priority)
+            for l1_domain in self.l1_domains:
+                if l1_domain in domain:
+                    return 1
+
+            # Check L2 domains
+            for l2_domain in self.l2_domains:
+                if l2_domain in domain:
+                    return 2
+
+            # Check L3 domains
+            for l3_domain in self.l3_domains:
+                if l3_domain in domain:
+                    return 3
+
+            # Check L4 domains
+            for l4_domain in self.l4_domains:
+                if l4_domain in domain:
+                    return 4
+
+            # Check denied domains
+            for deny_domain in self.deny_domains:
+                if deny_domain in domain:
+                    return 5
+
+            # Default to L4 for unknown domains
+            return 4
+
+        except Exception as e:
+            return 5
+
     def classify_url(self, url: str) -> Dict[str, Any]:
         """
         Класифікує URL за L1-L4 політикою
