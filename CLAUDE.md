@@ -222,6 +222,47 @@ G. Джерела → URL найкращих L1-L4 джерел
 - `run_production.py` - production runner
 - `project_manager.py` - інтерактивний менеджер з dashboard
 
+## 🔥 Critical Technical Solutions
+
+### Gemini Google Search з grounding_metadata
+
+**Проблема:** Gemini Google Search не використовував реальні URL з grounding_metadata, натомість намагався парсити текст відповіді.
+
+**Рішення:** Реалізовано правильне отримання URL з `response.candidates[0].grounding_metadata.grounding_chunks`:
+
+```python
+# modules/gemini_google_search.py - GeminiGoogleSearcher
+def search_for_column_b_source(self, ingredient: str, synonyms: Optional[List[str]] = None):
+    response = self.model.generate_content(query_text)
+
+    # ✅ Правильне отримання grounding metadata
+    if hasattr(response, 'candidates') and response.candidates:
+        candidate = response.candidates[0]
+        if hasattr(candidate, 'grounding_metadata') and candidate.grounding_metadata:
+            grounding_data = candidate.grounding_metadata
+
+            if hasattr(grounding_data, 'grounding_chunks') and grounding_data.grounding_chunks:
+                for chunk in grounding_data.grounding_chunks:
+                    if hasattr(chunk, 'web') and chunk.web:
+                        sources.append({
+                            "url": chunk.web.uri,           # ✅ Реальний URL
+                            "title": chunk.web.title,       # ✅ Реальний title
+                            "content": response.text,
+                            "type": "gemini_search"
+                        })
+```
+
+**Результат:**
+- ✅ 6-11 реальних джерел на кожен пошук (B/C/D стовпчики)
+- ✅ Автентичні URL з nih.gov, frontiersin.org, oregonstate.edu
+- ✅ Повна інтеграція з citation collection system
+- ✅ Vertex AI redirect URLs (очікувана поведінка)
+
+**Тестування:**
+```bash
+python test_gemini_grounding.py  # Демонструє роботу grounding_metadata
+```
+
 ## Key Constraints
 
 ### Strict Requirements

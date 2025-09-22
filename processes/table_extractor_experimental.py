@@ -9,7 +9,7 @@ import time
 
 from modules.multi_ai_client import multi_ai_client
 from modules.ncbi_client import ncbi_client
-from modules.gemini_google_search import gemini_google_searcher
+from modules.gemini_google_search import GeminiGoogleSearcher
 from config import Config
 from processes.ai_prompts import TablePrompts
 from processes.table_schema import TABLE_OUTPUT_SCHEMA
@@ -20,6 +20,7 @@ class ExperimentalTableExtractor:
 
     def __init__(self):
         self.system_prompt = self._get_system_prompt()
+        self.gemini_searcher = GeminiGoogleSearcher()
 
     def _get_system_prompt(self) -> str:
         return """Ти експерт з харчових добавок. Витягуй точні дані для таблиці з 5 стовпчиків:
@@ -92,7 +93,7 @@ class ExperimentalTableExtractor:
             # 1. Gemini Google Search для джерела сировини
             print(f"[B1] Gemini search for biological source...")
             try:
-                search_results = gemini_google_searcher.search_for_column_b_source(ingredient, synonyms)
+                search_results = self.gemini_searcher.search_for_column_b_source(ingredient, synonyms)
             except Exception as e:
                 print(f"[B1-FALLBACK] Gemini failed, using NCBI: {e}")
                 search_results = self._fallback_to_ncbi_for_source(ingredient, synonyms)
@@ -144,7 +145,7 @@ class ExperimentalTableExtractor:
             # 1. Gemini Google Search для активних сполук
             print(f"[C1] Gemini search for active compounds...")
             try:
-                search_results = gemini_google_searcher.search_for_column_c_compounds(ingredient, synonyms)
+                search_results = self.gemini_searcher.search_for_column_c_compounds(ingredient, synonyms)
             except Exception as e:
                 print(f"[C1-FALLBACK] Gemini failed, using NCBI: {e}")
                 search_results = self._fallback_to_ncbi_for_compounds(ingredient, synonyms)
@@ -197,7 +198,7 @@ class ExperimentalTableExtractor:
             # 1. Gemini Google Search для дозування
             print(f"[D1] Gemini search for dosage...")
             try:
-                search_results = gemini_google_searcher.search_for_column_d_dosage(ingredient, synonyms)
+                search_results = self.gemini_searcher.search_for_column_d_dosage(ingredient, synonyms)
             except Exception as e:
                 print(f"[D1-FALLBACK] Gemini failed, using NCBI: {e}")
                 search_results = self._fallback_to_ncbi_for_dosage(ingredient, synonyms)
@@ -298,7 +299,7 @@ class ExperimentalTableExtractor:
             print(f"[CITATIONS] Collecting sources for {ingredient}...")
 
             # Пошук B: джерела сировини
-            b_sources = gemini_google_searcher.search_for_column_b_source(ingredient)
+            b_sources = self.gemini_searcher.search_for_column_b_source(ingredient)
             for source in b_sources[:2]:  # Максимум 2 з кожного циклу
                 if source.get('url') and source.get('content'):
                     quote = self._extract_relevant_quote(source['content'], ingredient, 'source')
@@ -311,7 +312,7 @@ class ExperimentalTableExtractor:
                         })
 
             # Пошук C: активні сполуки
-            c_sources = gemini_google_searcher.search_for_column_c_compounds(ingredient)
+            c_sources = self.gemini_searcher.search_for_column_c_compounds(ingredient)
             for source in c_sources[:2]:
                 if source.get('url') and source.get('content'):
                     quote = self._extract_relevant_quote(source['content'], ingredient, 'compounds')
@@ -324,7 +325,7 @@ class ExperimentalTableExtractor:
                         })
 
             # Пошук D: дозування
-            d_sources = gemini_google_searcher.search_for_column_d_dosage(ingredient)
+            d_sources = self.gemini_searcher.search_for_column_d_dosage(ingredient)
             for source in d_sources[:2]:
                 if source.get('url') and source.get('content'):
                     quote = self._extract_relevant_quote(source['content'], ingredient, 'dosage')
@@ -1342,7 +1343,7 @@ Find these missing data points:
 Focus on peer-reviewed sources, clinical studies, and official health agencies.
 Return structured information with exact citations and URLs."""
 
-            result = gemini_google_searcher.search_comprehensive_ingredient_data(
+            result = self.gemini_searcher.search_comprehensive_ingredient_data(
                 ingredient, synonyms, custom_prompt=targeted_prompt
             )
 
@@ -1362,7 +1363,7 @@ Find these missing data points:
 
 Include any reliable sources with scientific backing."""
 
-            return gemini_google_searcher.search_comprehensive_ingredient_data(
+            return self.gemini_searcher.search_comprehensive_ingredient_data(
                 ingredient, synonyms, custom_prompt=general_prompt
             )
 
